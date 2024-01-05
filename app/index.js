@@ -27,7 +27,6 @@ const blackLists = [
   'https://raw.githubusercontent.com/FadeMind/hosts.extras/master/add.2o7Net/hosts',
   'https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy.txt',
   'https://hostfiles.frogeye.fr/firstparty-trackers-hosts.txt',
-  'https://www.github.developerdan.com/hosts/lists/ads-and-tracking-extended.txt',
   'https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/android-tracking.txt',
   'https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/SmartTV.txt',
   'https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/AmazonFireTV.txt',
@@ -50,46 +49,80 @@ const blackLists = [
   'https://raw.githubusercontent.com/chadmayfield/my-pihole-blocklists/master/lists/pi_blocklist_porn_top1m.list',
   'https://v.firebog.net/hosts/Prigent-Adult.txt',
   'https://raw.githubusercontent.com/anudeepND/blacklist/master/facebook.txt',
+  'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt',
+  'https://raw.githubusercontent.com/RPiList/specials/master/Blocklisten/Win10Telemetry',
+  'https://raw.githubusercontent.com/RPiList/specials/master/Blocklisten/crypto',
+  'https://raw.githubusercontent.com/RPiList/specials/master/Blocklisten/gambling',
+  'https://raw.githubusercontent.com/RPiList/specials/master/Blocklisten/malware',
+  'https://raw.githubusercontent.com/RPiList/specials/master/Blocklisten/DomainSquatting1',
+  'https://raw.githubusercontent.com/RPiList/specials/master/Blocklisten/DomainSquatting2',
+  'https://raw.githubusercontent.com/RPiList/specials/master/Blocklisten/pornblock1',
+  'https://raw.githubusercontent.com/RPiList/specials/master/Blocklisten/pornblock2',
+  'https://raw.githubusercontent.com/RPiList/specials/master/Blocklisten/pornblock3',
+  'https://raw.githubusercontent.com/RPiList/specials/master/Blocklisten/pornblock4',
+  'https://raw.githubusercontent.com/RPiList/specials/master/Blocklisten/proxies',
+  'https://raw.githubusercontent.com/RPiList/specials/master/Blocklisten/Fake-Science',
+  'https://www.github.developerdan.com/hosts/lists/ads-and-tracking-extended.txt',
+  'https://www.github.developerdan.com/hosts/lists/facebook-extended.txt',
+  'https://www.github.developerdan.com/hosts/lists/dating-services-extended.txt',
+  'https://www.github.developerdan.com/hosts/lists/hate-and-junk-extended.txt',
+  'https://www.github.developerdan.com/hosts/lists/tracking-aggressive-extended.txt',
 ];
 
 const set = new Set();
 
 const downloadList = async (url) => {
-  return new Promise((resolve) => {
-    https.get(url, function (res) {
-      const chunks = [];
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, function (res) {
+        const chunks = [];
 
-      res.on('data', (chunk) => {
-        chunks.push(chunk);
+        res.on('data', (chunk) => {
+          chunks.push(chunk);
+        });
+
+        res.on('end', () => {
+          Buffer.concat(chunks)
+            .toString()
+            .split(/\r?\n/)
+            .forEach((line) => {
+              const trimmedLine = line.trim();
+
+              if (!trimmedLine.startsWith('#')) {
+                set.add(trimmedLine);
+              }
+            });
+
+          resolve();
+        });
+
+        res.on('error', (err) => {
+          reject(err);
+        });
+      })
+      .on('error', (err) => {
+        reject(err);
       });
-
-      res.on('end', () => {
-        Buffer.concat(chunks)
-          .toString()
-          .split(/\r?\n/)
-          .forEach((line) => {
-            const trimmedLine = line.trim();
-
-            if (!trimmedLine.startsWith('#')) {
-              set.add(trimmedLine);
-            }
-          });
-
-        resolve();
-      });
-    });
   });
 };
 
+const promisses = [];
+
 for (const blackList of blackLists) {
   try {
-    await downloadList(blackList);
+    promisses.push(downloadList(blackList));
   } catch (err) {
     console.error(err);
   }
 }
 
-const file = fs.createWriteStream('pihole-block-list.txt');
+(await Promise.allSettled(promisses)).forEach((promiss) => {
+  if (promiss.status !== 'fulfilled') {
+    console.error(promiss.reason);
+  }
+});
+
+const file = fs.createWriteStream('out/pihole-block-list.txt');
 
 file.on('error', console.error);
 file.on('finish', () => {
@@ -97,6 +130,6 @@ file.on('finish', () => {
   console.log('Download Completed');
 });
 
-for (const line of [...set]) {
+for (const line of set) {
   file.write(`${line}\n`);
 }
